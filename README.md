@@ -2,7 +2,7 @@
 
 Snake is a small web game. Steer the snake to eat the red squares, and it grows longer each time. The game ends if you hit a wall or your own body. It saves your best score on your device. You can play with the arrow keys or WASD, by swiping on the board, or with the on-screen buttons.
 
-Live demo: https://YOUR-USERNAME.github.io/Snake/
+Live demo: https://rajshrestha-07.github.io/Snake-Game/
 
 Built with: HTML, CSS and JavaScript.
 

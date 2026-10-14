@@ -1,0 +1,156 @@
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+<title>Snake</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,800&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+/* Layout: one narrow column on graph paper. Status line, a square canvas, an on-screen direction pad for phones, then start button and scores. */
+:root {
+  --paper: #eef1f4; --card: #ffffff; --ink: #14233a; --muted: #5c6b80; --line: #cdd5df;
+  --hot: #e8452c;
+  --accent: #14233a; --accent-ink: #eef1f4;
+  --display: "Bricolage Grotesque", "Trebuchet MS", system-ui, sans-serif;
+  --mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --paper: #0f1826; --card: #17233a; --ink: #e7ecf4; --muted: #93a2ba; --line: #2a3a56;
+    --hot: #ffb02e; --accent: #e7ecf4; --accent-ink: #0f1826; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --paper: #0f1826; --card: #17233a; --ink: #e7ecf4; --muted: #93a2ba; --line: #2a3a56;
+  --hot: #ffb02e; --accent: #e7ecf4; --accent-ink: #0f1826; color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body {
+  background: var(--paper); color: var(--ink); font-family: var(--mono); font-size: 14px; line-height: 1.5;
+  padding-inline: 16px; padding-block: 28px 56px;
+  background-image: linear-gradient(var(--line) 1px, transparent 1px), linear-gradient(90deg, var(--line) 1px, transparent 1px);
+  background-size: 28px 28px; background-position: -1px -1px;
+}
+main { max-width: 440px; margin-inline: auto; }
+.panel { background: var(--paper); border: 1px solid var(--line); border-radius: 4px; padding: 14px 16px; display: flex; flex-direction: column; gap: 12px; }
+h1 { font-family: var(--display); font-weight: 800; font-size: clamp(2rem, 9vw, 3rem); line-height: 1; letter-spacing: -0.02em; margin: 0; }
+p { margin: 0; color: var(--muted); }
+button { font: inherit; cursor: pointer; }
+button:focus-visible { outline: 3px solid var(--hot); outline-offset: 2px; }
+.status { font: 800 1.2rem var(--display); min-height: 1.6em; }
+canvas { display: block; width: 100%; max-width: 100%; aspect-ratio: 1; border: 2px solid var(--ink); border-radius: 4px; background: var(--card); touch-action: none; }
+.pad { display: grid; grid-template-columns: repeat(3, 56px); grid-template-rows: repeat(2, 48px); gap: 6px; justify-content: center; }
+.pad button { font-size: 20px; color: var(--ink); background: var(--card); border: 2px solid var(--ink); border-radius: 4px; padding: 0; touch-action: manipulation; }
+.pad .u { grid-column: 2; grid-row: 1; } .pad .l { grid-column: 1; grid-row: 2; } .pad .d { grid-column: 2; grid-row: 2; } .pad .r { grid-column: 3; grid-row: 2; }
+.row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+.btn { font-weight: 600; padding: 9px 14px; color: var(--accent-ink); background: var(--accent); border: 2px solid var(--accent); border-radius: 4px; }
+.stat { display: flex; gap: 18px; font-variant-numeric: tabular-nums; color: var(--muted); }
+.stat b { color: var(--ink); font-weight: 600; }
+</style>
+
+<main>
+  <div class="panel">
+    <h1>Snake</h1>
+    <p>Eat the squares, don't hit the walls or yourself. Arrow keys or WASD, swipe on the board, or use the pad.</p>
+    <div class="status" id="status" role="status">Press Start.</div>
+    <canvas id="cv" width="320" height="320" aria-label="Snake board"></canvas>
+    <div class="pad" aria-label="Direction pad">
+      <button class="u" type="button" data-d="u" aria-label="Up">↑</button>
+      <button class="l" type="button" data-d="l" aria-label="Left">←</button>
+      <button class="d" type="button" data-d="d" aria-label="Down">↓</button>
+      <button class="r" type="button" data-d="r" aria-label="Right">→</button>
+    </div>
+    <div class="row">
+      <button class="btn" id="start" type="button">Start</button>
+      <div class="stat"><span>Score <b id="score">0</b></span><span>Best <b id="best">0</b></span></div>
+    </div>
+  </div>
+</main>
+
+<script>
+(function () {
+  var $ = function (id) { return document.getElementById(id); };
+  function cssv(n) { return getComputedStyle(document.documentElement).getPropertyValue(n).trim(); }
+  var N = 16, CELL = 20, cv = $("cv"), ctx = cv.getContext("2d");
+  var snake, dir, nextDir, food, score, timer = null, alive = false, best = 0;
+  var VEC = { u: [0, -1], d: [0, 1], l: [-1, 0], r: [1, 0] };
+  try { best = Number(localStorage.getItem("snake-best")) || 0; } catch (e) {}
+  $("best").textContent = best;
+
+  function reset() {
+    snake = [[8, 8], [7, 8], [6, 8]]; dir = "r"; nextDir = "r"; score = 0;
+    placeFood(); $("score").textContent = 0; paint();
+  }
+  function placeFood() {
+    var free = [];
+    for (var x = 0; x < N; x++) for (var y = 0; y < N; y++) {
+      if (!snake.some(function (s) { return s[0] === x && s[1] === y; })) free.push([x, y]);
+    }
+    food = free[Math.floor(Math.random() * free.length)];
+  }
+  function setDir(d) {
+    var opp = { u: "d", d: "u", l: "r", r: "l" };
+    if (d !== opp[dir]) nextDir = d;
+  }
+  function tick() {
+    dir = nextDir;
+    var h = snake[0], v = VEC[dir], nx = h[0] + v[0], ny = h[1] + v[1];
+    var willEat = food && nx === food[0] && ny === food[1];
+    var body = willEat ? snake : snake.slice(0, -1);
+    if (nx < 0 || ny < 0 || nx >= N || ny >= N || body.some(function (s) { return s[0] === nx && s[1] === ny; })) { die(); return; }
+    snake.unshift([nx, ny]);
+    if (willEat) {
+      score++; $("score").textContent = score;
+      if (snake.length === N * N) { die(true); return; }
+      placeFood();
+    } else { snake.pop(); }
+    paint();
+  }
+  function die(won) {
+    clearInterval(timer); timer = null; alive = false;
+    if (score > best) { best = score; $("best").textContent = best; try { localStorage.setItem("snake-best", String(best)); } catch (e) {} }
+    $("status").textContent = won ? "You filled the board!" : "Game over. Score " + score + ".";
+    $("start").textContent = "Play again"; paint();
+  }
+  function paint() {
+    var ink = cssv("--ink"), hot = cssv("--hot"), line = cssv("--line");
+    ctx.fillStyle = cssv("--card"); ctx.fillRect(0, 0, cv.width, cv.height);
+    ctx.strokeStyle = line; ctx.lineWidth = 1;
+    for (var i = 1; i < N; i++) {
+      ctx.beginPath(); ctx.moveTo(i * CELL + 0.5, 0); ctx.lineTo(i * CELL + 0.5, cv.height); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(0, i * CELL + 0.5); ctx.lineTo(cv.width, i * CELL + 0.5); ctx.stroke();
+    }
+    if (food) { ctx.fillStyle = hot; ctx.fillRect(food[0] * CELL + 3, food[1] * CELL + 3, CELL - 6, CELL - 6); }
+    snake.forEach(function (s, k) {
+      ctx.fillStyle = ink; ctx.globalAlpha = k === 0 ? 1 : 0.8;
+      ctx.fillRect(s[0] * CELL + 1, s[1] * CELL + 1, CELL - 2, CELL - 2);
+    });
+    ctx.globalAlpha = 1;
+  }
+  function start() {
+    if (timer) clearInterval(timer);
+    reset(); alive = true;
+    $("status").textContent = "Go!"; $("start").textContent = "Restart";
+    timer = setInterval(tick, 130);
+  }
+  $("start").addEventListener("click", start);
+  document.querySelector(".pad").addEventListener("click", function (e) {
+    var d = e.target.getAttribute && e.target.getAttribute("data-d");
+    if (d && alive) setDir(d);
+  });
+  document.addEventListener("keydown", function (e) {
+    var map = { ArrowUp: "u", ArrowDown: "d", ArrowLeft: "l", ArrowRight: "r", w: "u", s: "d", a: "l", d: "r" };
+    var d = map[e.key];
+    if (!d || !alive) return;
+    e.preventDefault(); setDir(d);
+  });
+  var tx = 0, ty = 0;
+  cv.addEventListener("touchstart", function (e) { var t = e.touches[0]; tx = t.clientX; ty = t.clientY; }, { passive: true });
+  cv.addEventListener("touchend", function (e) {
+    if (!alive) return;
+    var t = e.changedTouches[0], dx = t.clientX - tx, dy = t.clientY - ty;
+    if (Math.max(Math.abs(dx), Math.abs(dy)) < 20) return;
+    setDir(Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? "r" : "l") : (dy > 0 ? "d" : "u"));
+  }, { passive: true });
+  reset();
+})();
+</script>
+
+</body></html>
